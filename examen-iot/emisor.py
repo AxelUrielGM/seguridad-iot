@@ -1,28 +1,91 @@
 import tkinter as tk
+from tkinter import ttk
 import serial
+import threading
+import time
 
-# Configurar puerto serial (COM5 a 9600 baud)
-ser = serial.Serial('COM5', 9600)  # Abrir COM5. Reemplaza 'COM5' por el puerto que uses.
+PUERTO = "COM5"
+BAUDIOS = 9600
 
-def enviar_dato(valor):
-    """Envía el valor dado por el puerto serial."""
-    # Convertir el valor a bytes y enviar
-    ser.write(valor.encode('utf-8'))
-    print(f"Dato '{valor}' enviado por serial")  # (Opcional: mensaje en la consola de Python)
+try:
+    ser = serial.Serial(PUERTO, BAUDIOS)
+    print(f"[✓] Conectado al puerto {PUERTO}")
+except Exception as e:
+    print(f"[X] Error al conectar: {e}")
+    ser = None
 
-# Crear ventana principal
+# Obtener datos de la GUI
+def obtener_datos():
+    comp_estado = [str(var.get()) for var in computadoras_vars]  # 10 valores: '1' o '0'
+    comp_cadena = ",".join(comp_estado)
+
+    datos = [
+        "Detectado" if var_sonico.get() else "No Detectado",
+        "Oscuro" if var_luz.get() else "Claro",
+        entry_temp.get(),
+        entry_hum.get(),
+        "ON" if var_lampara.get() else "OFF",
+        comp_cadena,
+        "Activo" if var_buzzer.get() else "Inactivo",
+        entry_rfid.get()
+    ]
+    return ",".join(datos)
+
+# Envío automático cada 10 segundos
+def enviar_periodicamente():
+    while True:
+        if ser:
+            datos = obtener_datos()
+            print(f"[→] Enviado: {datos}")
+            ser.write((datos + '\n').encode('utf-8'))
+        time.sleep(10)
+
+# Interfaz gráfica
 root = tk.Tk()
-root.title("Emisor Serial")
+root.title("Emulador Arduino - PLC")
 
-# Crear botones y asignar comandos
-boton1 = tk.Button(root, text="Enviar 1", command=lambda: enviar_dato("1"))
-boton1.pack(padx=10, pady=5)
+# Sensor Sónico (checkbox)
+var_sonico = tk.BooleanVar()
+tk.Checkbutton(root, text="Sensor Sónico Detectado", variable=var_sonico).grid(row=0, columnspan=2, sticky="w")
 
-boton2 = tk.Button(root, text="Enviar 2", command=lambda: enviar_dato("2"))
-boton2.pack(padx=10, pady=5)
+# Sensor de Luz (checkbox)
+var_luz = tk.BooleanVar()
+tk.Checkbutton(root, text="Oscuridad detectada", variable=var_luz).grid(row=1, columnspan=2, sticky="w")
 
-botonA = tk.Button(root, text="Enviar A", command=lambda: enviar_dato("A"))
-botonA.pack(padx=10, pady=5)
+# Temperatura
+tk.Label(root, text="Temperatura (°C):").grid(row=2, column=0)
+entry_temp = tk.Entry(root)
+entry_temp.grid(row=2, column=1)
 
-# Iniciar bucle principal de la interfaz
+# Humedad
+tk.Label(root, text="Humedad (%):").grid(row=3, column=0)
+entry_hum = tk.Entry(root)
+entry_hum.grid(row=3, column=1)
+
+# Lámpara
+var_lampara = tk.BooleanVar()
+tk.Checkbutton(root, text="Lámpara encendida", variable=var_lampara).grid(row=4, columnspan=2, sticky="w")
+
+# Computadoras RGB (10 checkboxes)
+tk.Label(root, text="Computadoras RGB (10):").grid(row=5, column=0, sticky="w")
+computadoras_vars = []
+for i in range(10):
+    var = tk.IntVar()
+    cb = tk.Checkbutton(root, text=f"PC{i+1}", variable=var)
+    cb.grid(row=6 + i // 5, column=i % 5)
+    computadoras_vars.append(var)
+
+# Buzzer
+var_buzzer = tk.BooleanVar()
+tk.Checkbutton(root, text="Buzzer activo", variable=var_buzzer).grid(row=8, columnspan=2, sticky="w")
+
+# RFID
+tk.Label(root, text="ID RFID:").grid(row=9, column=0)
+entry_rfid = tk.Entry(root)
+entry_rfid.grid(row=9, column=1)
+
+# Hilo de envío
+threading.Thread(target=enviar_periodicamente, daemon=True).start()
+
 root.mainloop()
+
